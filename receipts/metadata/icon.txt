@@ -1,2 +1,0 @@
-VectorStock
-VectorStock.ccm/21078960
