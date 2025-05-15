@@ -1,0 +1,68 @@
+Receipt
+Suno
+Invoice
+number
+NISAVL21-0001
+Receipt
+number
+2713-8486
+Date
+paid
+May
+4, 2025
+Payment
+method
+Mastercard -9624
+Suno
+Bill to
+17
+Dunster
+Street
+Jangwon
+Boo
+Floor
+4
+서울특별시
+Seoul
+Cambridge,
+Massachusetts
+02138
+선릉로
+221
+United
+States
+403-1004
+billing@suno.com
+06276
+South
+Korea
+john.boo@gmail.com
+$96.00
+paid
+on
+May
+4, 2025
+Description
+Qty
+Unit price
+Amount
+Suno
+Pro
+1
+$96.00
+$96.00
+May
+4,2025-May4,2026
+Subtotal
+$96.00
+Total
+$96.00
+Amount
+paid
+$96.00
+2713-8486·$96.00
+paid
+on
+May
+4, 2025
+Page 1 of 1
