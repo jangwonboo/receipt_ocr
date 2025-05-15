@@ -1,4 +1,44 @@
 #!/usr/bin/env python3
+"""
+OCR Processing Tool for Receipts and Documents
+영수증 및 문서용 OCR 처리 도구
+
+This script provides functionality to perform OCR (Optical Character Recognition) on receipts
+and general documents using Naver Cloud OCR API. It can extract text and structured data from
+images and PDF files. Supported operations include general text extraction and specialized
+receipt data extraction.
+
+이 스크립트는 네이버 클라우드 OCR API를 사용하여 영수증 및 일반 문서에 대한 OCR(광학 문자 인식)을
+수행하는 기능을 제공합니다. 이미지와 PDF 파일에서 텍스트 및 구조화된 데이터를 추출할 수 있습니다.
+지원되는 작업에는 일반 텍스트 추출 및 특수한 영수증 데이터 추출이 포함됩니다.
+
+Features:
+기능:
+- Process single files or entire directories
+  단일 파일 또는 전체 디렉토리 처리
+- Support for multiple file formats (PDF, JPG, PNG, TIFF)
+  여러 파일 형식 지원 (PDF, JPG, PNG, TIFF)
+- General OCR for text extraction from documents
+  문서에서 텍스트 추출을 위한 일반 OCR
+- Receipt OCR for structured data extraction from receipts
+  영수증에서 구조화된 데이터 추출을 위한 영수증 OCR
+- Support for Korean and English languages
+  한국어 및 영어 언어 지원
+- Conversion of multi-page PDFs
+  여러 페이지 PDF 변환
+- Output in JSON format for easy post-processing
+  쉬운 후처리를 위한 JSON 형식 출력
+
+Usage:
+사용법:
+    python ocr.py --file path/to/receipt.jpg --mode receipt
+    python ocr.py --dir path/to/documents/ --mode general --lang ko
+    python ocr.py --file path/to/document.pdf --output path/to/output/
+
+Author: Claude
+Date: May 15, 2025
+"""
+
 # Code to load pdf or docx file and convert it to text
 # PDF 또는 DOCX 파일을 로드하고 텍스트로 변환하는 코드
 

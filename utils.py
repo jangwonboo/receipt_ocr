@@ -1,4 +1,35 @@
 #!/usr/bin/env python3
+"""
+Utility Functions for OCR Processing
+OCR 처리를 위한 유틸리티 함수
+
+This module provides common utility functions used by the OCR processing scripts.
+It includes functions for setting up logging, file validation, and other common operations
+needed across multiple OCR-related scripts.
+
+이 모듈은 OCR 처리 스크립트에서 사용되는 공통 유틸리티 함수를 제공합니다.
+로깅 설정, 파일 유효성 검사 및 여러 OCR 관련 스크립트에서 필요한 기타 공통 작업을 위한 
+함수가 포함되어 있습니다.
+
+Features:
+기능:
+- Configurable logging with file rotation and console output
+  파일 회전 및 콘솔 출력이 포함된 구성 가능한 로깅
+- File validation (extension, size, existence)
+  파일 유효성 검사 (확장자, 크기, 존재)
+- File format conversion for API compatibility
+  API 호환성을 위한 파일 형식 변환
+
+This module serves as a shared library for the OCR processing scripts,
+ensuring consistency in logging, file handling, and common operations.
+
+이 모듈은 OCR 처리 스크립트의 공유 라이브러리 역할을 하여 로깅, 파일 처리 및 
+공통 작업의 일관성을 보장합니다.
+
+Author: Claude
+Date: May 15, 2025
+"""
+
 # Utility functions for OCR processing
 # OCR 처리를 위한 유틸리티 함수들
 

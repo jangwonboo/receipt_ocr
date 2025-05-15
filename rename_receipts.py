@@ -6,14 +6,31 @@ Receipt File Renamer
 This script renames receipt files (PDF, PNG, JPG, JPEG, TIF, TIFF) based on data extracted
 from corresponding JSON files. It's designed to be used after running the ocr.py OCR script
 that extracts structured data from receipt images/documents.
+
 이 스크립트는 해당하는 JSON 파일에서 추출된 데이터를 기반으로 영수증 파일(PDF, PNG, JPG, JPEG, TIF, TIFF)의
 이름을 변경합니다. 영수증 이미지/문서에서 구조화된 데이터를 추출하는 ocr.py OCR 스크립트를 실행한 후
 사용하도록 설계되었습니다.
+
+Features:
+기능:
+- Batch processing of multiple receipt files
+  여러 영수증 파일의 일괄 처리
+- Automatic extraction of date, store name, and price data from JSON
+  JSON에서 날짜, 상점 이름 및 가격 데이터 자동 추출
+- Support for multiple file formats (PDF, PNG, JPG, JPEG, TIF, TIFF)
+  여러 파일 형식 지원 (PDF, PNG, JPG, JPEG, TIF, TIFF)
+- Intelligent handling of missing data with fallbacks
+  대체 옵션으로 누락된 데이터 지능적 처리
+- Structured file naming format for easy organization
+  쉬운 정리를 위한 구조화된 파일 이름 형식
+- Detailed logging of all operations
+  모든 작업에 대한 상세 로깅
 
 The renamed format follows: {payment_date}_{store_name}_{total_price}.<original_extension>
 - payment_date: Formatted as MMDD (e.g., 0415 for April 15)
 - store_name: Special characters and spaces removed
 - total_price: Units and currency symbols removed, only digits kept
+
 변경된 이름 형식: {payment_date}_{store_name}_{total_price}.<원본_확장자>
 - payment_date: MMDD 형식으로 포맷됨 (예: 4월 15일의 경우 0415)
 - store_name: 특수 문자 및 공백 제거됨
@@ -129,6 +146,36 @@ def format_price(price_str):
     
     return cleaned
 
+def calculate_total_from_items(items):
+    """
+    Calculate total price from individual item prices when total price is not available
+    개별 항목 가격에서 총 가격을 계산합니다 (총 가격을 사용할 수 없을 때)
+    
+    Args:
+        items (list): List of item dictionaries with price information
+                    가격 정보가 있는 항목 사전 목록
+    
+    Returns:
+        str: Calculated total price
+            계산된 총 가격
+    """
+    total = 0
+    for item in items:
+        price_str = item.get('price', '')
+        if not price_str:
+            continue
+            
+        # Clean the price string and convert to float
+        cleaned_price = format_price(price_str)
+        try:
+            total += float(cleaned_price)
+        except ValueError:
+            # Skip items where price couldn't be converted to float
+            continue
+            
+    # Return the total as a formatted string
+    return str(int(total))  # Round to nearest integer
+
 def rename_receipt_files(json_dir=None, source_dir=None):
     """
     Rename receipt files based on information in corresponding JSON files.
@@ -179,6 +226,9 @@ def rename_receipt_files(json_dir=None, source_dir=None):
             with open(json_file, 'r', encoding='utf-8') as f:
                 receipt_data = json.load(f)
             
+            logger.debug(f"Processing JSON file: {json_basename}")
+            logger.debug(f"JSON data keys: {list(receipt_data.keys())}")
+            
             # Extract relevant information
             # 관련 정보 추출
             payment_date = ""
@@ -202,18 +252,40 @@ def rename_receipt_files(json_dir=None, source_dir=None):
                 elif "store_info" in receipt_data and "name" in receipt_data["store_info"]:
                     store_name = receipt_data["store_info"]["name"]
                 
+                # Extract filename base if no store name found
+                # 상점 이름이 없으면 파일 이름에서 추출
+                if not store_name:
+                    # Try to extract a name from the filename itself
+                    store_name = os.path.splitext(base_name)[0]
+                    logger.info(f"No store name found in JSON, using filename base: {store_name}")
+                
                 # Try to get total price
                 # 총 가격 가져오기 시도
                 if "total_price" in receipt_data:
                     total_price = receipt_data["total_price"]
                 elif "payment_info" in receipt_data and "totalPrice" in receipt_data["payment_info"]:
                     total_price = receipt_data["payment_info"]["totalPrice"]
+                
+                # If total price is still empty, try to calculate from items
+                # 총 가격이 여전히 비어 있으면 항목에서 계산을 시도
+                if not total_price and "items" in receipt_data and receipt_data["items"]:
+                    logger.info(f"Total price not found in JSON. Calculating from individual items.")
+                    total_price = calculate_total_from_items(receipt_data["items"])
+                    logger.info(f"Calculated total price: {total_price}")
             
             # Format the information
             # 정보 포맷팅
             formatted_date = format_date(payment_date)
             formatted_store = clean_filename(store_name)
             formatted_price = format_price(total_price)
+            
+            logger.debug(f"Formatted values: date={formatted_date}, store={formatted_store}, price={formatted_price}")
+            
+            # Skip if we have no meaningful data to use for renaming
+            # 이름 변경에 사용할 의미 있는 데이터가 없으면 건너뛰기
+            if formatted_date == "unknown_date" and formatted_store == "unknown" and formatted_price == "0":
+                logger.warning(f"No meaningful data extracted from {json_basename}, skipping rename")
+                continue
             
             # Process each matching file
             # 각 일치하는 파일 처리
