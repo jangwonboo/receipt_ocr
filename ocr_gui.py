@@ -87,49 +87,90 @@ class OcrWorker(QThread):
         """
         retries = 0
         file_path_obj = Path(file_path) if not isinstance(file_path, Path) else file_path
+        file_name = file_path_obj.name
         
         while retries < max_retries and self.is_running:
             try:
                 # Create a temporary directory for processing
-                temp_dir = Path(tempfile.mkdtemp())
-                try:
-                    # Process the file using Gemini OCR
-                    ocr_result = gemini_ocr.process_file(file_path_obj, temp_dir)
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_dir_path = Path(temp_dir)
                     
-                    # If we have a result, ensure it has the expected structure
-                    if ocr_result and isinstance(ocr_result, dict):
-                        # Ensure required fields are present
-                        for field in ["date", "place", "amount", "currency"]:
-                            if field not in ocr_result:
-                                ocr_result[field] = None
+                    try:
+                        # Process the file with Gemini OCR
+                        result = gemini_ocr.process_file(file_path_obj, temp_dir_path)
                         
-                        # Add OCR text to the result
-                        ocr_result["ocr_text"] = json.dumps(ocr_result, ensure_ascii=False, indent=2)
+                        if result and 'error' not in result:
+                            # Ensure required fields are present
+                            for field in ["date", "place", "amount", "currency"]:
+                                if field not in result:
+                                    result[field] = None
+                            
+                            # Add OCR text to the result if not present
+                            if 'ocr_text' not in result:
+                                result['ocr_text'] = result.get('extracted_text', '')
+                            
+                            # Add missing fields list
+                            missing_fields = [
+                                field for field in ["date", "place", "amount", "currency"]
+                                if not result.get(field)
+                            ]
+                            result['missing_fields'] = missing_fields
+                            
+                            return result
+                            
+                        elif result and 'error' in result:
+                            error_msg = result['error']
+                            if 'rate limit' in error_msg.lower():
+                                wait_time = 60  # Wait 1 minute for rate limit
+                                self.result_signal.emit(
+                                    self.lang.get_text("rate_limit_wait", wait_time, retries + 1, max_retries))
+                                time.sleep(wait_time)
+                                retries += 1
+                                continue
+                            else:
+                                self.result_signal.emit(f"Error processing {file_name}: {error_msg}")
+                                return None
+                        else:
+                            self.result_signal.emit(
+                                self.lang.get_text("extraction_failed", file_name))
+                            return None
+                            
+                    except Exception as e:
+                        error_str = str(e)
+                        logger.error(f"Error in gemini_ocr.process_file for {file_name}: {error_str}")
+                        logger.error(traceback.format_exc())
+                        raise  # Re-raise to be caught by the outer exception handler
                         
-                        # Add missing fields list
-                        missing_fields = [field for field in ["date", "place", "amount", "currency"] 
-                                       if not ocr_result.get(field)]
-                        ocr_result["missing_fields"] = missing_fields
-                        
-                        return ocr_result
-                    return None
-                finally:
-                    # Clean up temporary directory
-                    if temp_dir.exists():
-                        shutil.rmtree(temp_dir)
             except Exception as e:
                 error_str = str(e)
-                file_name = str(file_path_obj.name) if hasattr(file_path_obj, 'name') else str(file_path_obj)
+                
+                # Log the error with retry information
+                if retries < max_retries - 1:  # Don't log error on last attempt
+                    retry_msg = f" (retry {retries + 1}/{max_retries})"
+                else:
+                    retry_msg = " (final attempt)"
+                
+                logger.error(f"Error processing {file_name}{retry_msg}: {error_str}")
+                logger.error(traceback.format_exc())
+                
+                # User feedback
+                if retries < max_retries - 1:
+                    self.result_signal.emit(
+                        f"Retry {retries + 1}/{max_retries}: Error processing {file_name}")
+                else:
+                    self.result_signal.emit(
+                        f"Failed to process {file_name} after {max_retries} attempts: {error_str}")
                 
                 # Check if it's a rate limit error
-                if "429" in error_str or "rate limit" in error_str.lower() or "quota" in error_str.lower():
+                if any(term in error_str.lower() for term in ["429", "rate limit", "quota"]):
                     retries += 1
                     if retries >= max_retries:
                         self.result_signal.emit(self.lang.get_text("rate_limit_max"))
                         return None
                     
                     wait_time = self.retry_delay * (2 ** (retries - 1))  # Exponential backoff
-                    self.result_signal.emit(self.lang.get_text("rate_limit_wait", wait_time, retries, max_retries))
+                    self.result_signal.emit(
+                        self.lang.get_text("rate_limit_wait", wait_time, retries, max_retries))
                     
                     # Wait with checking for stop signal
                     for _ in range(wait_time * 10):  # Check 10 times per second
@@ -137,13 +178,12 @@ class OcrWorker(QThread):
                             return None
                         time.sleep(0.1)
                 else:
-                    # For other errors, log and return None
-                    error_msg = f"{self.lang.get_text('error_processing')} {file_name}: {error_str}"
-                    self.result_signal.emit(error_msg)
-                    logger.error(f"Error processing {file_path_obj}: {error_str}")
-                    logger.error(traceback.format_exc())
-                    return None
-                    return None
+                    # For other errors, increment retry counter and continue
+                    retries += 1
+                    if retries < max_retries:
+                        time.sleep(1)  # Short delay before retry for non-rate-limit errors
+                    
+        return None
         
     def run(self):
         try:
@@ -197,9 +237,14 @@ class OcrWorker(QThread):
                 # Perform OCR using Gemini with retry logic
                 result = self.perform_ocr_with_retry(file_path_obj)
                 
-                if not result:
-                    self.result_signal.emit(
-                        self.lang.get_text("extraction_failed", filename))
+                # Only show extraction failed if we actually failed to process the file
+                # (result is None) or if we have an explicit error in the result
+                if result is None or (isinstance(result, dict) and 'error' in result):
+                    if result and 'error' in result:
+                        self.result_signal.emit(f"{filename}: {result['error']}")
+                    else:
+                        self.result_signal.emit(
+                            self.lang.get_text("extraction_failed", filename))
                     processed += 1
                     self.progress_signal.emit(processed, total_files)
                     continue
@@ -223,31 +268,88 @@ class OcrWorker(QThread):
                     self.result_signal.emit(
                         f"Error saving results for {filename}: {str(e)}")
                 
-                # Rename the file if requested
-                if self.rename_files and result:
-                    try:
-                        # Generate new filename
-                        new_filename = gemini_ocr.generate_filename_from_info(result, file_path_obj)
-                        new_file_path = Path(self.output_dir) / new_filename
-                        
-                        # Check if destination exists and append a number if it does
-                        counter = 1
-                        original_stem = new_file_path.stem
-                        while new_file_path.exists():
-                            new_filename = f"{original_stem}_{counter}{new_file_path.suffix}"
-                            new_file_path = new_file_path.with_name(new_filename)
-                            counter += 1
-                        
-                        # Create output directory if it doesn't exist
-                        os.makedirs(self.output_dir, exist_ok=True)
-                        
-                        # Copy the file to the output directory with the new name
-                        shutil.copy2(file_path, new_file_path)
+                # Skip if the output files already exist and we're not forcing reprocessing
+                output_base = Path(self.output_dir) / file_path_obj.stem
+                text_path = output_base.parent / f"{output_base.name}.txt"
+                json_path = output_base.parent / f"{output_base.name}.json"
+                
+                if not self.force_process and text_path.exists() and json_path.exists():
+                    self.result_signal.emit(
+                        f"Skipping {filename} - already processed (use Force Process to reprocess)")
+                    processed += 1
+                    self.progress_signal.emit(processed, total_files)
+                    continue
+                
+                # Process the file with OCR
+                result = self.perform_ocr_with_retry(file_path_obj)
+                
+                # Only show extraction failed if we actually failed to process the file
+                # (result is None) or if we have an explicit error in the result
+                if result is None or (isinstance(result, dict) and 'error' in result):
+                    if result and 'error' in result:
+                        self.result_signal.emit(f"{filename}: {result['error']}")
+                    else:
                         self.result_signal.emit(
-                            self.lang.get_text("file_renamed", filename, new_file_path.name))
-                    except Exception as e:
-                        self.result_signal.emit(
-                            self.lang.get_text("rename_error", filename, str(e)))
+                            self.lang.get_text("extraction_failed", filename))
+                    processed += 1
+                    self.progress_signal.emit(processed, total_files)
+                    continue
+                
+                # Save results to files
+                try:
+                    os.makedirs(self.output_dir, exist_ok=True)
+                    
+                    # Save OCR text
+                    with open(text_path, 'w', encoding='utf-8') as f:
+                        f.write(result.get("ocr_text", ""))
+                    
+                    # Save extracted information
+                    with open(json_path, 'w', encoding='utf-8') as f:
+                        json.dump(result, f, ensure_ascii=False, indent=2)
+                    
+                    self.result_signal.emit(
+                        f"{filename} processed successfully. Output saved to {text_path}")
+                        
+                    # Rename the file if requested
+                    if self.rename_files and result.get('place') and result.get('date'):
+                        try:
+                            # Generate new filename
+                            new_filename = gemini_ocr.generate_filename_from_info(result, file_path_obj)
+                            new_file_path = Path(self.output_dir) / new_filename
+                            
+                            # Skip if source file doesn't exist (already processed)
+                            if not file_path_obj.exists():
+                                self.result_signal.emit(
+                                    f"Skipping rename - source file not found: {filename}")
+                            else:
+                                # If the new file exists, remove it first
+                                if new_file_path.exists():
+                                    try:
+                                        os.remove(str(new_file_path))
+                                    except OSError as e:
+                                        self.result_signal.emit(
+                                            f"Warning: Could not overwrite {new_file_path.name}: {str(e)}")
+                                
+                                # Rename the original file
+                                file_path_obj.rename(new_file_path)
+                                self.result_signal.emit(
+                                    f"Renamed: {filename} -> {new_file_path.name}")
+                                    
+                        except Exception as e:
+                            self.result_signal.emit(
+                                f"Error renaming file {filename}: {str(e)}")
+                
+                except Exception as e:
+                    self.result_signal.emit(
+                        f"Error saving results for {filename}: {str(e)}")
+                
+                processed += 1
+                self.progress_signal.emit(processed, total_files)
+                
+                # Add a small delay between files to avoid rate limiting
+                if self.is_running:
+                    self.result_signal.emit("Waiting 1 second before next file...")
+                    time.sleep(1)
                 
                 processed += 1
                 self.progress_signal.emit(processed, total_files)
