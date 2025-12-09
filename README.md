@@ -40,11 +40,11 @@ GOOGLE_API_KEY=your_google_api_key_here
 **중요:** 등호(`=`) 앞뒤 공백 없이 작성하세요.
 
 ```bash
-# 올바른 형식
-GOOGLE_API_KEY=AIzaSyAamcLtA1tEiUZtaFnwZry7-98jgpLpj3Y
+# 올바른 형식 (공백 없음)
+GOOGLE_API_KEY=your_google_api_key_here
 
 # 잘못된 형식 (공백 주의)
-GOOGLE_API_KEY =AIzaSyAamcLtA1tEiUZtaFnwZry7-98jgpLpj3Y
+GOOGLE_API_KEY =your_google_api_key_here
 ```
 
 ### 문제 해결: API 키가 .env 파일에서 로드되지 않는 경우
@@ -143,10 +143,10 @@ python gemini_ocr.py path/to/directory/
 2. **.env 파일 형식 확인:**
    ```bash
    # 올바른 형식 (공백 없음)
-   GOOGLE_API_KEY=AIzaSyAamcLtA1tEiUZtaFnwZry7-98jgpLpj3Y
+   GOOGLE_API_KEY=your_google_api_key_here
    
    # 잘못된 형식 (공백 있음 - 피해야 함)
-   GOOGLE_API_KEY =AIzaSyAamcLtA1tEiUZtaFnwZry7-98jgpLpj3Y
+   GOOGLE_API_KEY =your_google_api_key_here
    ```
 
 3. **프로그램 재시작:**
