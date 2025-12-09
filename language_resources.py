@@ -24,14 +24,14 @@ RESOURCES = {
         "input_label": "Select directory containing images/PDFs:",
         "browse_btn": "Browse...",
         
-        # Output directory section
-        "output_group": "Output Directory",
-        "output_label": "Select directory for JSON output:",
-        "output_browse_btn": "Browse...",
+        # Temp directory section
+        "temp_group": "Temp Directory",
+        "temp_label": "Select directory for JSON output:",
+        "temp_browse_btn": "Browse...",
         
         # OCR Options section
         "options_group": "OCR Options",
-        "rate_limit_warning": "⚠️ Mistral API has rate limits. Processing will pause automatically if limits are reached.",
+        "rate_limit_warning": "⚠️ Google Gemini API has rate limits. Processing will pause automatically if limits are reached.",
         
         # Rename options section
         "rename_group": "Rename Options",
@@ -50,17 +50,17 @@ RESOURCES = {
         
         # Messages
         "app_started": "Application started. Select an input directory to begin.",
-        "rate_limit_note": "Note: This application uses Mistral API which has rate limits.",
+        "rate_limit_note": "Note: This application uses Google Gemini API which has rate limits.",
         "rate_limit_pause": "If rate limits are reached, processing will pause automatically.",
-        "checking_api": "Checking Mistral API configuration...",
-        "api_key_missing": "❌ MISTRAL_API_KEY not set. Please set it in the .env file.",
-        "api_key_found": "✓ Mistral API key found! Ready to process documents.",
-        "api_check_error": "❌ Error checking Mistral API configuration: {0}",
+        "checking_api": "Checking Google Gemini API configuration...",
+        "api_key_missing": "❌ GOOGLE_API_KEY not set. Please set it in the .env file.",
+        "api_key_found": "✓ Google Gemini API key found! Ready to process documents.",
+        "api_check_error": "❌ Error checking Google Gemini API configuration: {0}",
         "input_dir_set": "Input directory set to: {0}",
-        "output_dir_set": "Output directory set to: {0}",
-        "output_dir_created": "Created output directory: {0}",
+        "base_dir_set": "Base directory set to: {0}",
+        "base_dir_created": "Created base directory: {0}",
         "error_no_input": "Please select an input directory.",
-        "error_no_output": "Please select an output directory.",
+        "error_no_temp_dir": "Please select a temp directory.",
         "starting_ocr": "Starting OCR processing...",
         "stopping_ocr": "Stopping OCR processing...",
         "ocr_complete": "OCR processing completed successfully!",
@@ -101,14 +101,14 @@ RESOURCES = {
         "input_label": "이미지/PDF가 포함된 디렉토리 선택:",
         "browse_btn": "찾아보기...",
         
-        # Output directory section
-        "output_group": "출력 디렉토리",
-        "output_label": "JSON 출력을 위한 디렉토리 선택:",
-        "output_browse_btn": "찾아보기...",
+        # Temp directory section
+        "temp_group": "임시 디렉토리",
+        "temp_label": "JSON 출력을 위한 디렉토리 선택:",
+        "temp_browse_btn": "찾아보기...",
         
         # OCR Options section
         "options_group": "OCR 옵션",
-        "rate_limit_warning": "⚠️ Mistral API에는 속도 제한이 있습니다. 제한에 도달하면 처리가 자동으로 일시 중지됩니다.",
+        "rate_limit_warning": "⚠️ Google Gemini API에는 속도 제한이 있습니다. 제한에 도달하면 처리가 자동으로 일시 중지됩니다.",
         
         # Rename options section
         "rename_group": "이름 변경 옵션",
@@ -127,17 +127,17 @@ RESOURCES = {
         
         # Messages
         "app_started": "애플리케이션이 시작되었습니다. 시작하려면 입력 디렉토리를 선택하세요.",
-        "rate_limit_note": "참고: 이 애플리케이션은 속도 제한이 있는 Mistral API를 사용합니다.",
+        "rate_limit_note": "참고: 이 애플리케이션은 속도 제한이 있는 Google Gemini API를 사용합니다.",
         "rate_limit_pause": "속도 제한에 도달하면 처리가 자동으로 일시 중지됩니다.",
-        "checking_api": "Mistral API 구성을 확인 중...",
-        "api_key_missing": "❌ MISTRAL_API_KEY가 설정되지 않았습니다. .env 파일에서 설정하세요.",
-        "api_key_found": "✓ Mistral API 키를 찾았습니다! 문서 처리 준비 완료.",
-        "api_check_error": "❌ Mistral API 구성 확인 중 오류: {0}",
+        "checking_api": "Google Gemini API 구성을 확인 중...",
+        "api_key_missing": "❌ GOOGLE_API_KEY가 설정되지 않았습니다. .env 파일에서 설정하세요.",
+        "api_key_found": "✓ Google Gemini API 키를 찾았습니다! 문서 처리 준비 완료.",
+        "api_check_error": "❌ Google Gemini API 구성 확인 중 오류: {0}",
         "input_dir_set": "입력 디렉토리 설정: {0}",
-        "output_dir_set": "출력 디렉토리 설정: {0}",
-        "output_dir_created": "출력 디렉토리 생성: {0}",
+        "base_dir_set": "기본 디렉토리 설정: {0}",
+        "base_dir_created": "기본 디렉토리 생성: {0}",
         "error_no_input": "입력 디렉토리를 선택하세요.",
-        "error_no_output": "출력 디렉토리를 선택하세요.",
+        "error_no_temp_dir": "임시 디렉토리를 선택하세요.",
         "starting_ocr": "OCR 처리 시작...",
         "stopping_ocr": "OCR 처리 중지 중...",
         "ocr_complete": "OCR 처리가 성공적으로 완료되었습니다!",

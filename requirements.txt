@@ -3,3 +3,8 @@ Pillow==10.0.1
 requests==2.31.0
 python-dotenv==1.0.0
 openai==1.13.3
+google-genai
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+img2pdf

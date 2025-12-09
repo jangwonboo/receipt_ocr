@@ -82,7 +82,7 @@
      </widget>
     </item>
     <item>
-     <widget class="QGroupBox" name="output_group">
+     <widget class="QGroupBox" name="temp_group">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
         <horstretch>0</horstretch>
@@ -90,25 +90,25 @@
        </sizepolicy>
       </property>
       <property name="title">
-       <string>Output Directory</string>
+       <string>Temp Directory</string>
       </property>
       <layout class="QHBoxLayout" name="horizontalLayout_3">
        <item>
-        <widget class="QLabel" name="output_label">
+        <widget class="QLabel" name="temp_label">
          <property name="text">
           <string>Select directory for JSON output:</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QLineEdit" name="output_path">
+        <widget class="QLineEdit" name="temp_path">
          <property name="readOnly">
           <bool>true</bool>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="output_browse_btn">
+        <widget class="QPushButton" name="temp_browse_btn">
          <property name="text">
           <string>Browse...</string>
          </property>
@@ -137,7 +137,7 @@
             <string notr="true">color: #E67E22; font-weight: bold;</string>
            </property>
            <property name="text">
-            <string>⚠️ Mistral API has rate limits. Processing will pause automatically if limits are reached.</string>
+            <string>⚠️ Google Gemini API has rate limits. Processing will pause automatically if limits are reached.</string>
            </property>
           </widget>
          </item>

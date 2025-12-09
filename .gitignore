@@ -115,4 +115,8 @@ tmp/
 *.json
 !requirements.json
 !package.json
-output/ 
+output/
+
+# OAuth credentials (security sensitive)
+credentials.json
+token.json 

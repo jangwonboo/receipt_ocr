@@ -21,6 +21,7 @@ import img2pdf
 from pathlib import Path
 import logging
 import re
+import traceback
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple, Union
 from PIL import Image
@@ -34,6 +35,29 @@ from google import genai
 from google.genai import types
 import pathlib as pl
 import httpx
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+# .env 파일에서 환경 변수 로드
+# override=True: .env 파일의 값이 환경 변수를 덮어씁니다 (환경 변수에 이미 값이 있어도 .env 우선)
+# override=True: .env 파일의 값이 환경 변수를 덮어씁니다
+load_dotenv(override=True)
+
+# Get API key from environment variable (.env file)
+# 환경 변수에서 API 키 가져오기 (.env 파일)
+# strip()을 사용하여 공백 제거 (.env 파일에 공백이 있을 수 있음)
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "").strip()
+
+# Helper function to mask API key for logging
+# 로깅을 위한 API 키 마스킹 헬퍼 함수
+def mask_api_key(api_key: str) -> str:
+    """
+    Mask API key for safe logging (show first 4 and last 4 characters)
+    안전한 로깅을 위해 API 키 마스킹 (처음 4자와 마지막 4자만 표시)
+    """
+    if not api_key or len(api_key) <= 8:
+        return "***"
+    return f"{api_key[:4]}...{api_key[-4:]}"
 
 
 prompt = """
@@ -42,7 +66,7 @@ prompt = """
         1. Date: Look for transaction date with keywords like:
            - In Korean: '거래일시', '결제시간', '승인시간', '판매일', '판매시간', '일시', '승인일자', '거래일자'
            - In English: 'Date', 'Transaction Date', 'Purchase Date', 'Date of Sale'
-           - Common formats: YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, YYYY.MM.DD
+           - Common formats: YY-MM-DD, YYYY-MM-DD, DD/MM/YYYY, DD/MM/YY, MM/DD/YY, MM/DD/YYYY, YY.MM.DDYYYY.MM.DD
            - Example: 2023-05-16, 05/16/2023, 16.05.2023
            - Date must be returned in YYYYMMDD format (e.g., 20230516)
         
@@ -61,6 +85,7 @@ prompt = """
 
         
         Important:
+        - All the characters in the response must be in Korean or English including numbers
         - If any field is not found, set it to null
         - For date, ensure it is in YYMMDD format (e.g., 230516 for May 16, 2023)
         - For amount, return only the number without any currency symbols or formatting
@@ -86,9 +111,78 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Log API key status after logger is initialized
+# 로거 초기화 후 API 키 상태 로깅
+if GOOGLE_API_KEY:
+    logger.info(f"GOOGLE_API_KEY loaded from .env: {mask_api_key(GOOGLE_API_KEY)}")
+    logger.info(f"Full GOOGLE_API_KEY from .env: {GOOGLE_API_KEY}")
+    
+    # Check if there's a mismatch between .env and environment variable
+    # .env와 환경 변수 간 불일치 확인
+    # Note: After load_dotenv(override=True), os.environ should match .env
+    # 참고: load_dotenv(override=True) 후에는 os.environ이 .env와 일치해야 함
+    env_var_key = os.environ.get("GOOGLE_API_KEY")
+    if env_var_key and env_var_key != GOOGLE_API_KEY:
+        logger.warning(f"⚠️ Environment variable GOOGLE_API_KEY differs from .env file!")
+        logger.warning(f"Environment var: {mask_api_key(env_var_key)}")
+        logger.warning(f"Using .env value: {mask_api_key(GOOGLE_API_KEY)}")
+        logger.info(f"Full .env GOOGLE_API_KEY: {GOOGLE_API_KEY}")
+else:
+    logger.warning("GOOGLE_API_KEY not found in .env file")
+
+
 # Supported file extensions
 SUPPORTED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png']
+
+def get_genai_client():
+    """
+    Get genai.Client with API key authentication
+    API 키 인증으로 genai.Client 가져오기
+    
+    Returns:
+        genai.Client instance
+    """
+    # Use API key authentication from .env file
+    # .env 파일에서 API 키 인증 사용
+    if GOOGLE_API_KEY:
+        logger.info(f"Using GOOGLE_API_KEY from .env file: {mask_api_key(GOOGLE_API_KEY)}")
+        logger.info(f"Full GOOGLE_API_KEY: {GOOGLE_API_KEY}")
+        return genai.Client(api_key=GOOGLE_API_KEY)
+    else:
+        # Try default (GOOGLE_API_KEY env var)
+        # 기본값 시도 (GOOGLE_API_KEY 환경 변수)
+        logger.info("Using default authentication (GOOGLE_API_KEY env var)")
+        return genai.Client()
+
+def check_authentication() -> bool:
+    """
+    Check if authentication is properly configured
+    인증이 제대로 설정되어 있는지 확인
+    
+    Returns:
+        True if authentication is configured, False otherwise
+    """
+    # Check API key
+    # API 키 확인
+    if not GOOGLE_API_KEY:
+        logger.error("API key not found. Please set GOOGLE_API_KEY in .env file.")
+        logger.error("API 키를 찾을 수 없습니다. .env 파일에 GOOGLE_API_KEY를 설정하세요.")
+        return False
+    
+    try:
+        # Try to create a client with the API key
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        # If no exception is raised, API key is likely set
+        # Note: This doesn't verify if the key is valid, just if it's configured
+        logger.info(f"GOOGLE_API_KEY found and configured: {mask_api_key(GOOGLE_API_KEY)}")
+        logger.info(f"Full GOOGLE_API_KEY: {GOOGLE_API_KEY}")
+        return True
+    except Exception as e:
+        logger.error(f"API key check failed: {e}")
+        logger.error("Please check your GOOGLE_API_KEY in .env file.")
+        logger.error(".env 파일의 GOOGLE_API_KEY를 확인하세요.")
+        return False
 
 def convert_image_to_pdf(image_path: Path) -> Optional[Path]:
     """Convert image to PDF for processing"""
@@ -164,7 +258,11 @@ def extract_info_with_gemini(file_path: Path) -> Optional[Dict[str, Any]]:
     Returns:
         Dictionary with extracted receipt information
     """
-    client = genai.Client()
+    # Get client with appropriate authentication
+    # 적절한 인증으로 클라이언트 가져오기
+    logger.info(f"Calling Gemini API with GOOGLE_API_KEY: {mask_api_key(GOOGLE_API_KEY) if GOOGLE_API_KEY else 'Not set'}")
+    logger.info(f"Full GOOGLE_API_KEY used for API call: {GOOGLE_API_KEY}")
+    client = get_genai_client()
     
     try:
         response = client.models.generate_content(
@@ -194,7 +292,24 @@ def extract_info_with_gemini(file_path: Path) -> Optional[Dict[str, Any]]:
         return result
         
     except Exception as e:
+        error_str = str(e)
         logger.error(f"Gemini API call failed: {e}")
+        
+        # Check for specific API errors and provide helpful messages
+        if "403" in error_str or "PERMISSION_DENIED" in error_str:
+            if "suspended" in error_str.lower():
+                logger.error("API Key has been SUSPENDED. Please check your Google Cloud Console and create a new API key.")
+                logger.error("API 키가 정지되었습니다. Google Cloud Console에서 새 API 키를 생성하세요.")
+            else:
+                logger.error("API Key permission denied. Please check your API key settings.")
+                logger.error("API 키 권한이 거부되었습니다. API 키 설정을 확인하세요.")
+        elif "401" in error_str or "UNAUTHENTICATED" in error_str:
+            logger.error("API Key is invalid or missing. Please set GOOGLE_API_KEY in .env file.")
+            logger.error("API 키가 유효하지 않거나 없습니다. .env 파일에 GOOGLE_API_KEY를 설정하세요.")
+        elif "429" in error_str or "rate limit" in error_str.lower():
+            logger.error("API rate limit exceeded. Please wait and try again later.")
+            logger.error("API 호출 한도를 초과했습니다. 잠시 후 다시 시도하세요.")
+        
         return None
 
 def process_file(file_path: Union[str, Path], temp_dir: Path) -> Optional[Dict[str, Any]]:
@@ -240,6 +355,17 @@ def process_file(file_path: Union[str, Path], temp_dir: Path) -> Optional[Dict[s
         # Extract information using Gemini
         extracted_info = extract_info_with_gemini(process_path)
         
+        # Check if extraction failed
+        if extracted_info is None:
+            error_msg = f"Failed to extract information from {file_path}"
+            logger.error(error_msg)
+            # Return error information for GUI to display
+            return {
+                "error": error_msg,
+                "file_path": str(file_path),
+                "suggestion": "API 키가 정지되었거나 유효하지 않을 수 있습니다. Google Cloud Console에서 API 키 상태를 확인하세요."
+            }
+            
         # Fill missing fields with 'NA' for date, place, amount, currency
         for field in ["date", "place", "amount", "currency"]:
             value = extracted_info.get(field, None)
@@ -423,5 +549,4 @@ if __name__ == "__main__":
             logger.error(f"Input path does not exist: {input_path}")
     except Exception as e:
         logger.error(f"Error: {e}")
-        import traceback
         logger.error(traceback.format_exc())

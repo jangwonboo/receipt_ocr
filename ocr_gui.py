@@ -24,31 +24,24 @@ import sys
 import os
 import glob
 import json
-import threading
-import queue
-import shutil
 import time
 import tempfile
 import traceback
 from datetime import datetime
 from pathlib import Path
-import logging
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QLineEdit, QProgressBar, QTextEdit,
-    QFileDialog, QCheckBox, QGroupBox, QComboBox, QMessageBox
+    QApplication, QMainWindow, QPushButton, QLabel, QLineEdit, 
+    QProgressBar, QTextEdit, QFileDialog, QCheckBox, QGroupBox, 
+    QComboBox, QMessageBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QColor, QScreen
+from PyQt6.QtCore import QThread, pyqtSignal, pyqtSlot
 from PyQt6 import uic
 
 # Import Gemini OCR functionality
 import gemini_ocr
 # Import language resources
 from language_resources import LanguageManager
-import glob
-from pathlib import Path
 
 # Configure Logger
 import gemini_ocr
@@ -63,10 +56,11 @@ class OcrWorker(QThread):
     result_signal = pyqtSignal(str)         # Status message
     complete_signal = pyqtSignal(bool)      # Success status
 
-    def __init__(self, input_dir, output_dir, rename_files=True, force_process=False, lang_manager=None):
+    def __init__(self, input_dir, base_dir, rename_files=True, force_process=False, lang_manager=None, temp_dir=None):
         super().__init__()
         self.input_dir = input_dir
-        self.output_dir = output_dir
+        self.base_dir = base_dir
+        self.temp_dir = temp_dir
         self.rename_files = rename_files
         self.force_process = force_process
         self.is_running = True
@@ -91,11 +85,24 @@ class OcrWorker(QThread):
         
         while retries < max_retries and self.is_running:
             try:
-                # Create a temporary directory for processing
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_dir_path = Path(temp_dir)
+                # Use the specified temp directory for processing
+                if hasattr(self, 'temp_dir') and self.temp_dir:
+                    temp_dir_path = Path(self.temp_dir)
+                    os.makedirs(temp_dir_path, exist_ok=True)
                     
                     try:
+                        # Log API key being used (reload from .env to ensure latest value)
+                        # 사용 중인 API 키 로깅 (.env에서 최신 값 보장을 위해 재로드)
+                        from dotenv import load_dotenv
+                        load_dotenv(override=True)  # .env 파일의 값을 강제로 사용
+                        api_key = os.getenv("GOOGLE_API_KEY", "").strip()  # 공백 제거
+                        if api_key:
+                            masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+                            logger.info(f"ocr_gui.py: Using GOOGLE_API_KEY: {masked_key}")
+                            logger.info(f"ocr_gui.py: Full GOOGLE_API_KEY: {api_key}")
+                        else:
+                            logger.warning("ocr_gui.py: GOOGLE_API_KEY not found")
+                        
                         # Process the file with Gemini OCR
                         result = gemini_ocr.process_file(file_path_obj, temp_dir_path)
                         
@@ -140,6 +147,69 @@ class OcrWorker(QThread):
                         logger.error(f"Error in gemini_ocr.process_file for {file_name}: {error_str}")
                         logger.error(traceback.format_exc())
                         raise  # Re-raise to be caught by the outer exception handler
+                        
+                else:
+                    # Fallback to system temp directory if not set
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        temp_dir_path = Path(temp_dir)
+                        
+                        try:
+                            # Log API key being used (reload from .env to ensure latest value)
+                            # 사용 중인 API 키 로깅 (.env에서 최신 값 보장을 위해 재로드)
+                            from dotenv import load_dotenv
+                            load_dotenv(override=True)  # .env 파일의 값을 강제로 사용
+                            api_key = os.getenv("GOOGLE_API_KEY", "").strip()  # 공백 제거
+                            if api_key:
+                                masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+                                logger.info(f"ocr_gui.py: Using GOOGLE_API_KEY: {masked_key}")
+                                logger.info(f"ocr_gui.py: Full GOOGLE_API_KEY: {api_key}")
+                            else:
+                                logger.warning("ocr_gui.py: GOOGLE_API_KEY not found")
+                            
+                            # Process the file with Gemini OCR
+                            result = gemini_ocr.process_file(file_path_obj, temp_dir_path)
+                            
+                            if result and 'error' not in result:
+                                # Ensure required fields are present
+                                for field in ["date", "place", "amount", "currency"]:
+                                    if field not in result:
+                                        result[field] = None
+                                
+                                # Add OCR text to the result if not present
+                                if 'ocr_text' not in result:
+                                    result['ocr_text'] = result.get('extracted_text', '')
+                                
+                                # Add missing fields list
+                                missing_fields = [
+                                    field for field in ["date", "place", "amount", "currency"]
+                                    if not result.get(field)
+                                ]
+                                result['missing_fields'] = missing_fields
+                                
+                                return result
+                                
+                            elif result and 'error' in result:
+                                error_msg = result['error']
+                                if 'rate limit' in error_msg.lower():
+                                    wait_time = 60  # Wait 1 minute for rate limit
+                                    self.result_signal.emit(
+                                        self.lang.get_text("rate_limit_wait", wait_time, retries + 1, max_retries))
+                                    time.sleep(wait_time)
+                                    retries += 1
+                                    continue
+                                else:
+                                    self.result_signal.emit(f"Error processing {file_name}: {error_msg}")
+                                    return None
+                            else:
+                                self.result_signal.emit(
+                                    self.lang.get_text("extraction_failed", file_name))
+                                return None
+                                
+                        except Exception as e:
+                            error_str = str(e)
+                            logger.error(f"Error in gemini_ocr.process_file for {file_name}: {error_str}")
+                            logger.error(traceback.format_exc())
+                            raise  # Re-raise to be caught by the outer exception handler
                         
             except Exception as e:
                 error_str = str(e)
@@ -221,13 +291,16 @@ class OcrWorker(QThread):
                 filename = os.path.basename(file_path)
                 base_name = os.path.splitext(filename)[0]
                 
-                # Set output file path
-                output_path = os.path.join(self.output_dir, f"{base_name}.json")
+                # Use the selected temp directory directly
+                temp_output_dir = Path(self.temp_dir) if hasattr(self, 'temp_dir') and self.temp_dir else Path(self.base_dir) / "temp"
+                os.makedirs(temp_output_dir, exist_ok=True)
+                
+                output_path = temp_output_dir / f"{base_name}.json"
                 self.result_signal.emit(self.lang.get_text("processing_file", filename))
                 
                 # Check if output files already exist
                 file_path_obj = Path(file_path)
-                json_path = Path(self.output_dir) / f"{file_path_obj.stem}_extracted_info.json"
+                json_path = temp_output_dir / f"{file_path_obj.stem}_extracted_info.json"
                 if json_path.exists() and not self.force_process:
                     self.result_signal.emit(self.lang.get_text("skipping_file", filename))
                     processed += 1
@@ -249,12 +322,10 @@ class OcrWorker(QThread):
                     self.progress_signal.emit(processed, total_files)
                     continue
                 
-                # Save results to files
+                # Save results to files in temp directory
                 try:
-                    os.makedirs(self.output_dir, exist_ok=True)
-                    
                     # Save OCR text
-                    text_path = Path(self.output_dir) / f"{file_path_obj.stem}_ocr_output.txt"
+                    text_path = temp_output_dir / f"{file_path_obj.stem}_ocr_output.txt"
                     with open(text_path, 'w', encoding='utf-8') as f:
                         f.write(result.get("ocr_text", ""))
                     
@@ -267,21 +338,6 @@ class OcrWorker(QThread):
                 except Exception as e:
                     self.result_signal.emit(
                         f"Error saving results for {filename}: {str(e)}")
-                
-                # Skip if the output files already exist and we're not forcing reprocessing
-                output_base = Path(self.output_dir) / file_path_obj.stem
-                text_path = output_base.parent / f"{output_base.name}.txt"
-                json_path = output_base.parent / f"{output_base.name}.json"
-                
-                if not self.force_process and text_path.exists() and json_path.exists():
-                    self.result_signal.emit(
-                        f"Skipping {filename} - already processed (use Force Process to reprocess)")
-                    processed += 1
-                    self.progress_signal.emit(processed, total_files)
-                    continue
-                
-                # Process the file with OCR
-                result = self.perform_ocr_with_retry(file_path_obj)
                 
                 # Only show extraction failed if we actually failed to process the file
                 # (result is None) or if we have an explicit error in the result
@@ -297,7 +353,7 @@ class OcrWorker(QThread):
                 
                 # Save results to files
                 try:
-                    os.makedirs(self.output_dir, exist_ok=True)
+                    os.makedirs(self.base_dir, exist_ok=True)
                     
                     # Save OCR text
                     with open(text_path, 'w', encoding='utf-8') as f:
@@ -315,7 +371,7 @@ class OcrWorker(QThread):
                         try:
                             # Generate new filename
                             new_filename = gemini_ocr.generate_filename_from_info(result, file_path_obj)
-                            new_file_path = Path(self.output_dir) / new_filename
+                            new_file_path = Path(self.base_dir) / new_filename
                             
                             # Skip if source file doesn't exist (already processed)
                             if not file_path_obj.exists():
@@ -348,15 +404,8 @@ class OcrWorker(QThread):
                 
                 # Add a small delay between files to avoid rate limiting
                 if self.is_running:
-                    self.result_signal.emit("Waiting 1 second before next file...")
+                    self.result_signal.emit(self.lang.get_text("waiting_next"))
                     time.sleep(1)
-                
-                processed += 1
-                self.progress_signal.emit(processed, total_files)
-                
-                # Add a small delay between files to avoid rate limiting
-                self.result_signal.emit(self.lang.get_text("waiting_next"))
-                time.sleep(1)
                 
             # Final status update
             if self.is_running:
@@ -384,12 +433,12 @@ class OcrApp(QMainWindow):
         super().__init__()
         
         self.input_dir = ""
-        self.output_dir = ""
+        self.base_dir = ""
+        self.temp_dir = ""
         self.worker = None
-        self.rename_worker = None
         
-        # Initialize language manager with default language (English)
-        self.lang_manager = LanguageManager("en")
+        # Initialize language manager with default language (Korean)
+        self.lang_manager = LanguageManager("ko")
         
         # Load UI from file
         self.loadUI()
@@ -402,6 +451,18 @@ class OcrApp(QMainWindow):
         self.logMessage(self.lang_manager.get_text("app_started"))
         self.logMessage(self.lang_manager.get_text("rate_limit_note"))
         self.logMessage(self.lang_manager.get_text("rate_limit_pause"))
+        
+        # Check and display GOOGLE_API_KEY status (reload from .env to ensure latest value)
+        # GOOGLE_API_KEY 상태 확인 및 표시 (.env에서 최신 값 보장을 위해 재로드)
+        from dotenv import load_dotenv
+        load_dotenv(override=True)  # .env 파일의 값을 강제로 사용
+        api_key = os.getenv("GOOGLE_API_KEY", "").strip()  # 공백 제거
+        if api_key:
+            masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+            self.logMessage(f"GOOGLE_API_KEY loaded from .env: {masked_key}")
+            self.logMessage(f"Full GOOGLE_API_KEY: {api_key}")
+        else:
+            self.logMessage("⚠️ GOOGLE_API_KEY not found in .env file")
     
     def adjustWindowSize(self):
         """
@@ -451,7 +512,7 @@ class OcrApp(QMainWindow):
         """
         # Connect UI elements to their functions
         self.browse_btn.clicked.connect(self.browseInputDir)
-        self.output_browse_btn.clicked.connect(self.browseOutputDir)
+        self.temp_browse_btn.clicked.connect(self.browseTempDir)
         self.process_btn.clicked.connect(self.startProcessing)
         self.stop_btn.clicked.connect(self.stopProcessing)
         self.quit_btn.clicked.connect(self.close)
@@ -472,10 +533,10 @@ class OcrApp(QMainWindow):
             self.input_label.setText(self.lang_manager.get_text("input_label"))
             self.browse_btn.setText(self.lang_manager.get_text("browse_btn"))
             
-            # Update output group
-            self.output_group.setTitle(self.lang_manager.get_text("output_group"))
-            self.output_label.setText(self.lang_manager.get_text("output_label"))
-            self.output_browse_btn.setText(self.lang_manager.get_text("output_browse_btn"))
+            # Update temp group
+            self.temp_group.setTitle(self.lang_manager.get_text("temp_group"))
+            self.temp_label.setText(self.lang_manager.get_text("temp_label"))
+            self.temp_browse_btn.setText(self.lang_manager.get_text("temp_browse_btn"))
             
             # Update OCR options
             self.options_group.setTitle(self.lang_manager.get_text("options_group"))
@@ -510,22 +571,42 @@ class OcrApp(QMainWindow):
             self.input_path.setText(dir_path)
             self.logMessage(self.lang_manager.get_text("input_dir_set", dir_path))
             
-            # If output directory not set, default to same as input
-            if not self.output_dir:
-                self.output_dir = dir_path
-                self.output_path.setText(dir_path)
-                self.logMessage(self.lang_manager.get_text("output_dir_set", dir_path))
+            # Automatically set temp directory as input_dir/temp
+            temp_display_path = os.path.join(dir_path, "temp")
+            self.temp_dir = temp_display_path
+            self.temp_path.setText(temp_display_path)
+            
+            # Create temp directory
+            os.makedirs(self.temp_dir, exist_ok=True)
+            
+            # Set base_dir to input_dir for backward compatibility
+            self.base_dir = dir_path
+            
+            self.logMessage(f"Temp directory automatically set to: {temp_display_path}")
+            self.logMessage("You can change the temp directory using the Browse button if needed.")
     
-    def browseOutputDir(self):
+    def browseTempDir(self):
         """
-        Open file dialog to select output directory
-        출력 디렉토리를 선택하는 파일 대화 상자 열기
+        Open file dialog to select temp directory
+        임시 디렉토리를 선택하는 파일 대화 상자 열기
         """
-        dir_path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
+        # Set initial directory to current temp_dir if it exists, otherwise input_dir
+        initial_dir = self.temp_dir if self.temp_dir else self.input_dir
+        
+        dir_path = QFileDialog.getExistingDirectory(
+            self, "Select Temp Directory", initial_dir)
         if dir_path:
-            self.output_dir = dir_path
-            self.output_path.setText(dir_path)
-            self.logMessage(self.lang_manager.get_text("output_dir_set", dir_path))
+            self.temp_dir = dir_path
+            self.temp_path.setText(dir_path)
+            
+            # Create temp directory if it doesn't exist
+            os.makedirs(self.temp_dir, exist_ok=True)
+            
+            # Update base_dir to parent of temp directory for compatibility
+            self.base_dir = os.path.dirname(dir_path) if dir_path != self.input_dir else self.input_dir
+            
+            self.logMessage(f"Temp directory set to: {dir_path}")
+            self.logMessage(f"JSON files will be saved to: {dir_path}")
     
     def logMessage(self, message):
         """
@@ -548,30 +629,56 @@ class OcrApp(QMainWindow):
             QMessageBox.warning(self, "Error", self.lang_manager.get_text("error_no_input"))
             return
             
-        if not self.output_dir:
-            QMessageBox.warning(self, "Error", self.lang_manager.get_text("error_no_output"))
+        if not self.temp_dir:
+            QMessageBox.warning(self, "Error", self.lang_manager.get_text("error_no_temp_dir"))
             return
+        
+        # Check GOOGLE_API_KEY before processing (reload from .env to ensure latest value)
+        # 처리 전 GOOGLE_API_KEY 확인 (.env에서 최신 값 보장을 위해 재로드)
+        from dotenv import load_dotenv
+        load_dotenv(override=True)  # .env 파일의 값을 강제로 사용
+        api_key = os.getenv("GOOGLE_API_KEY", "").strip()  # 공백 제거
+        if not api_key:
+            masked_key = "Not set"
+            full_key = "Not set"
+        else:
+            masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+            full_key = api_key
+        
+        # Show API key in dialog if not set
+        # API 키가 설정되지 않은 경우 dialog에 표시
+        if not api_key:
+            msg = f"{self.lang_manager.get_text('api_key_missing')}\n\n"
+            msg += f"Current GOOGLE_API_KEY: {full_key}"
+            QMessageBox.warning(self, "API Key Missing", msg)
+            return
+        
+        # Log the API key being used for this processing session
+        # 이번 처리 세션에서 사용 중인 API 키 로깅
+        self.logMessage(f"Using GOOGLE_API_KEY from .env: {masked_key}")
+        self.logMessage(f"Full GOOGLE_API_KEY: {full_key}")
             
-        # Create output directory if it doesn't exist
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-            self.logMessage(self.lang_manager.get_text("output_dir_created", self.output_dir))
+        # Create base directory if it doesn't exist
+        if not os.path.exists(self.base_dir):
+            os.makedirs(self.base_dir)
+            self.logMessage(self.lang_manager.get_text("base_dir_created", self.base_dir))
             
         # Disable controls during processing
         self.process_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.browse_btn.setEnabled(False)
-        self.output_browse_btn.setEnabled(False)
+        self.temp_browse_btn.setEnabled(False)
         
         self.logMessage(self.lang_manager.get_text("starting_ocr"))
         
         # Create and start worker thread
         self.worker = OcrWorker(
             self.input_dir, 
-            self.output_dir,
+            self.base_dir,
             rename_files=self.rename_check.isChecked(),
             force_process=not self.skip_existing_check.isChecked(),
-            lang_manager=self.lang_manager
+            lang_manager=self.lang_manager,
+            temp_dir=getattr(self, 'temp_dir', None)
         )
         
         self.worker.progress_signal.connect(self.updateProgress)
@@ -611,7 +718,7 @@ class OcrApp(QMainWindow):
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.browse_btn.setEnabled(True)
-        self.output_browse_btn.setEnabled(True)
+        self.temp_browse_btn.setEnabled(True)
         
         if success:
             self.logMessage(self.lang_manager.get_text("ocr_complete"))
