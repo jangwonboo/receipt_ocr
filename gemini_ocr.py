@@ -68,7 +68,8 @@ prompt = """
            - In English: 'Date', 'Transaction Date', 'Purchase Date', 'Date of Sale'
            - Common formats: YY-MM-DD, YYYY-MM-DD, DD/MM/YYYY, DD/MM/YY, MM/DD/YY, MM/DD/YYYY, YY.MM.DDYYYY.MM.DD
            - Example: 2023-05-16, 05/16/2023, 16.05.2023
-           - Date must be returned in YYYYMMDD format (e.g., 20230516)
+           - Date must be returned in YYYYMMDD format (e.g., 20230516 for May 16, 2023)
+           - Note: The system will automatically convert 4-digit years to 2-digit years (e.g., 2025 -> 25)
         
         2. Place: Look for the merchant or store name with keywords like:
            - In Korean: '가맹점명', '상호', '결제가맹점명', '상점명', '판매자정보', '판매자', '판매자상호'
@@ -87,7 +88,8 @@ prompt = """
         Important:
         - All the characters in the response must be in Korean or English including numbers
         - If any field is not found, set it to null
-        - For date, ensure it is in YYMMDD format (e.g., 230516 for May 16, 2023)
+        - For date, return in YYYYMMDD format (e.g., 20230516 for May 16, 2023)
+          The system will automatically extract the last 2 digits of the year (e.g., 2025 -> 25)
         - For amount, return only the number without any currency symbols or formatting
         
         Return only the JSON object, nothing else.
@@ -97,7 +99,7 @@ prompt = """
 
         Example response:
         {
-        "date": "230516",
+        "date": "20230516",
         "place": "Starbucks",
         "amount": 6500,
         "currency": "KRW"
@@ -224,10 +226,24 @@ def generate_filename_from_info(extracted_info: Dict[str, Any], original_path: P
     # Add date if available (format: YYMMDD for filename)
     if date and date.lower() != 'na':
         if isinstance(date, str) and len(date) >= 8:
-            if date[:2] in ["19", "20"] and date[:8].isdigit():
-                parts.append(date[2:8])  # YYMMDD format
+            # If date is in YYYYMMDD format (4-digit year), extract YYMMDD (last 6 digits)
+            # 2025로 인식되어도 뒤의 두 자리(25)만 사용
+            if date[:8].isdigit():
+                # Check if it starts with 4-digit year (1900-2099)
+                year_prefix = date[:4]
+                if year_prefix.isdigit() and 1900 <= int(year_prefix) <= 2099:
+                    # Use last 6 digits: YYMMDD format
+                    parts.append(date[2:8])  # YYMMDD format (e.g., 20251209 -> 251209)
+                else:
+                    # If not 4-digit year format, use first 8 characters
+                    parts.append(date[:8])
             else:
                 parts.append(date[:8])
+        elif isinstance(date, str) and len(date) >= 6:
+            # If date is already in YYMMDD format (6 digits), use as is
+            parts.append(date[:6])
+        else:
+            parts.append('NA')
     else:
         parts.append('NA')  # Add NA if date is missing
     
